@@ -139,5 +139,7 @@ redis:
   enabled: true
   auth:
     enabled: false
+  image:
+    debug: true
   replica:
     replicaCount: 0

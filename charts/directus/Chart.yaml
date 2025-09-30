@@ -28,6 +28,6 @@ dependencies:
   repository: "https://charts.bitnami.com/bitnami"
   condition: mariadb.enableInstallation
 - name: redis
-  version: "~19.6.4"
+  version: "~21.1.11"
   repository: "https://charts.bitnami.com/bitnami"
   condition: redis.enabled

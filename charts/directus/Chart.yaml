@@ -20,7 +20,7 @@ maintainers:
     url: https://github.com/directus-labs/helm-chart
 
 version: 1.0.4
-appVersion: "11.1.2"
+appVersion: "11.17.4"
 
 dependencies:
 - name: mariadb

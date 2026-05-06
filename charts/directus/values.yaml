@@ -12,7 +12,7 @@ image:
   repository: directus/directus 
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "11.8.0"
+  tag: "11.17.4"
 
 imagePullSecrets: []
 nameOverride: ""

@@ -1,44 +1,82 @@
+---
 # Default values for directus.
 # This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
 
 replicaCount: 1
 
-global: 
-  security: 
-    allowInsecureImages: true
+# -- Deployment strategy, for example:
+# updateStrategy:
+#   type: RollingUpdate
+#   rollingUpdate:
+#     maxSurge: 25%
+#     maxUnavailable: 25%
+# -- Or:
+# updateStrategy:
+#   type: Recreate
+updateStrategy:
+  type: RollingUpdate
 
 image:
-  repository: directus/directus 
+  # -- Directus image docker repository
+  repository: directus/directus
+  # -- Pull policy for docker image
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
+  # -- Overrides the image tag whose default is the chart appVersion.
   tag: "11.17.4"
 
+# -- Image Pull Secrets in k8s for docker image
 imagePullSecrets: []
+# -- Helm name override in Chart.yaml. This name is being used for resource naming
 nameOverride: ""
+# -- Completely overrides Chart name
 fullnameOverride: ""
 
+# -- Init Containers for Directus pod
+initContainers: []
+#  - name: myinitcontainer
+#    image: alpine:latest
+#    restartPolicy: Always
+#    command:
+#      - sh
+#      - -c
+#      - cat /opt/file.txt
+#    volumeMounts:
+#      - name: opt
+#        mountPath: /opt
+
+# -- Sidecars for Directus pod
+sidecars: []
+#  - name: busybox
+#    image: busybox:latest
+#    imagePullPolicy: Always
+#    command:
+#      - /bin/sh
+#      - -c
+#      - sleep 3600;
+
 sidecar:
+  # IMPORTANT! This feature is going to be DEPRECATED in the next release in favour of `sidecars`
+  # -- Sidecars for Directus pod
   enabled: false
   repository: busybox
   tag: latest
   pullPolicy: Always
-  command: 
+  # -- Command to run in sidecar docker image
+  command:
     - /bin/sh
     - -c
     - sleep 3600;
   securityContext: {}
     # allowPrivilegeEscalation: true
 
-adminEmail: "admin@example.com"
+adminEmail: "directus-admin@example.com"
 
 serviceAccount:
-  # Specifies whether a service account should be created
+  # -- Specifies whether a service account should be created
   create: true
-  # Annotations to add to the service account
+  # -- Annotations to add to the service account
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
+  # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template
   name: ""
 
 podAnnotations: {}
@@ -57,14 +95,20 @@ securityContext: {}
 service:
   type: ClusterIP
   port: 80
+  # -- Service annotations. Usually used in cloud environments
+  annotations: {}
 
 ingress:
   enabled: false
+  # -- Enable TLS in PUBLIC_URL
+  enableTLS: true
   className: ""
+  # -- Ingress annotations. Usually used in cloud environments
   annotations: {}
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
+    # -- Hostname to expose. You should create CNAME DNS record with this hostname to redirect to ALB DNS name
     - host: chart-example.local
       paths:
         - path: /
@@ -125,28 +169,97 @@ extraVolumes: []
 
 extraVolumeMounts: []
 
+# -- This setting enables the creation of `ADMIN_PASSWORD`, `KEY`, and `SECRET` variables in k8s secrets.
+# If it is set to false, you MUST set these variables manually via existing secret resource and set its name below.
+createApplicationSecret: true
 
-mariadb:
-  # The switch to switch off the installation of the mariadb, the rest of the settings are being used during the installation
+applicationSecretName: "directus-application-secret"
+
+# -- Database engine. Could be set to one value from the following list: `mysql`, `postgresql`.
+# Please disable installations for other database engines in this chart.
+# Please note if you use mariadb server, set `databaseEngine` to `mysql` value.
+# Details are here - https://directus.io/docs/configuration/database.
+databaseEngine: "mysql"
+
+# -- Create PostgreSQL secret in Directus chart
+# If set to enable, postgresql secret with values of `postgres-password`, `password`, and `replication-password` variables will be created.
+# Please consult the official bitnami postgres values file - https://github.com/bitnami/charts/blob/main/bitnami/postgresql/values.yaml#L164.
+# If set to false, you MUST create a secret resource in k8s for postgresql installation and set the correct value to the `existingSecret` in the postgresql settings setion.
+createPostgresqlSecret: false
+
+# -- Create MySQL secret in Directus chart
+# If set to enable, mysql secret with values of `mysql-root-password`, `mysql-replication-password` and `mysql-password` variables will be created.
+# Please consult the official bitnami mysql values file - https://github.com/bitnami/charts/blob/main/bitnami/mysql/values.yaml#L152.
+# If set to false, you MUST create a secret resource in k8s for mysql installation and set the correct value to the `existingSecret` in the mysql settings section.
+createMysqlSecret: true
+
+mysql:
+  # -- Global security settings for mysql image. Set to true to allow insecure images from bitnamilegacy repository
+  global:
+    security:
+      allowInsecureImages: true
+  # -- MySQL image settings
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/mysql
+    tag: 9.4.0-debian-12-r1
+  # -- The switch to switch off the installation of the mysql.
+  # The rest of the settings are being used during the installation and for DB connection.
+  # Link to the values.yaml file in bitnami repo - https://github.com/bitnami/charts/blob/main/bitnami/mysql/values.yaml
   enableInstallation: true
   auth:
-    # If you want to use your own mariadb secret, set `createSecrets` to false and update `mariadb.auth.existingSecret` field with the correct secret name
-    createSecrets: true
-    # The secret has to contain the keys  `mariadb-root-password`, `mariadb-replication-password`, `mariadb-password`, `ADMIN_PASSWORD`, `KEY`, `SECRET`
-    existingSecret: "directus-secret"
-    database: directus
-    username: "directus"
-  # Set the URL to the mariadb instance, otherwise leave it empty to use one that installed in the cluster
-  mariadbURL: ""
+    existingSecret: "directus-mysql-secret"
+    database: "directus_mysql"
+    username: "directus_mysql"
+  # If you want to use your own mysql or mariadb insance, please provide the URL to the existing instance in `mysqlURL`.
+  # Otherwise leave it empty to use mysql that being installed in the cluster with this chart.
+  # Please note mysql.auth.database will be used as a name of the database
+  # and mysql.auth.username will be used as username during the connection.
+  mysqlURL: ""
+  mysqlPort: ""
+
+postgresql:
+  # -- Global security settings for postgresql image. Set to true to allow insecure images from bitnamilegacy repository
+  global:
+    security:
+      allowInsecureImages: true
+  # -- PostgreSQL image settings
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 17.6.0-debian-12-r4
+  # -- The switch to switch off the installation of the postgresql.
+  # The rest of the settings are being used during the installation and for DB connection.
+  # Link to the values.yaml file in bitnami repo - https://github.com/bitnami/charts/blob/main/bitnami/postgresql/values.yaml
+  enableInstallation: false
+  auth:
+    existingSecret: "directus-postgresql-secret"
+    database: "directus_postgres"
+    username: "directus_postgres"
+  # If you want to use your own postgresql, please provide the URL to the existing instance in `postgresqlURL`.
+  # Otherwise leave it empty to use postgresql server that being installed in the cluster with this chart.
+  # Please note postgresql.auth.database will be used as a name of the database
+  # and postgresql.auth.username will be used as username during the connection.
+  postgresqlURL: ""
+  postgresqlPort: ""
 
 redis:
+  # -- Global security settings for redis image. Set to true to allow insecure images from bitnamilegacy repository
+  global:
+    security:
+      allowInsecureImages: true
+  # -- Redis image settings
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/redis
+    tag: 8.2.1-debian-12-r0
+  # -- Switch to enable Redis
   enabled: true
   auth:
-    enabled: false
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/redis
-    tag: 8.0.2-debian-12-r3
-    debug: true
+    # -- Existing secret name with Redis password
+    existingSecret: ""
+    # -- The key in the secret with password
+    existingSecretPasswordKey: ""
   replica:
+    # -- Amount of Redis replicas
     replicaCount: 0

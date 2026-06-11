@@ -5,12 +5,15 @@ metadata:
   labels:
     {{- include "directus.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
+  {{- if and (not .Values.autoscaling.enabled) (.Values.replicaCount) }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
       {{- include "directus.selectorLabels" . | nindent 6 }}
+  {{- if .Values.updateStrategy }}
+  strategy: {{- toYaml .Values.updateStrategy | nindent 4 }}
+  {{- end }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -27,6 +30,10 @@ spec:
       serviceAccountName: {{ include "directus.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainers }}
+      initContainers:
+        {{- include "directus.render" ( dict "value" .Values.initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
@@ -41,28 +48,45 @@ spec:
             - configMapRef:
                 name: {{ include "directus.fullname" . }}-configmap
           env:
-            - name: LOG_LEVEL
-              value: "debug"
+            {{- if eq .Values.databaseEngine "mysql" }}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mariadb.auth.existingSecret }}
-                  key: mariadb-password
+                  name: {{ .Values.mysql.auth.existingSecret }}
+                  key: mysql-password
+            {{- else if eq .Values.databaseEngine "postgresql" }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.auth.existingSecret }}
+                  key: password
+            {{- end }}
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mariadb.auth.existingSecret }}
+                  name: {{ .Values.applicationSecretName }}
                   key: ADMIN_PASSWORD
             - name: SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mariadb.auth.existingSecret }}
+                  name: {{ .Values.applicationSecretName }}
                   key: SECRET
             - name: KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mariadb.auth.existingSecret }}
+                  name: {{ .Values.applicationSecretName }}
                   key: KEY
+            {{- if .Values.ingress.enabled }}
+            - name: PUBLIC_URL
+              value: http{{ if .Values.ingress.enableTLS }}s{{ end }}://{{(index .Values.ingress.hosts 0).host }}{{(index (index .Values.ingress.hosts 0).paths 0).path }}
+            {{- end }}
+            {{- if .Values.redis.enabled}}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{- if .Values.redis.auth.existingSecret}} {{ .Values.redis.auth.existingSecret }} {{- else }} {{ .Release.Name }}-redis {{- end }}
+                  key: {{- if .Values.redis.auth.existingSecretPasswordKey }} {{ .Values.redis.auth.existingSecretPasswordKey }} {{- else }} redis-password {{- end }}
+            {{- end }}
             {{- if .Values.extraEnvVars }}
             {{- tpl (toYaml .Values.extraEnvVars) $ | nindent 12 }}
             {{- end }}
@@ -86,6 +110,9 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+        {{- if .Values.sidecars }}
+        {{- include "directus.render" ( dict "value" .Values.sidecars "context" $ ) | nindent 8 }}
+        {{- end }}
         {{- if .Values.sidecar.enabled }}
         - name: {{ .Chart.Name }}-sidecar
           image: "{{ .Values.sidecar.repository }}:{{ .Values.sidecar.tag }}"
